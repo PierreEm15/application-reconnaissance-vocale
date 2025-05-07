@@ -1,7 +1,8 @@
 # app.py
 import streamlit as st
 import speech_recognition as sr
-from streamlit_webrtc import webrtc_streamer
+#from streamlit_webrtc import webrtc_streamer
+from streamlit_audiorecorder import audiorecorder
 import requests
 import tempfile
 import os
@@ -64,30 +65,34 @@ def transcribe_with_deepgram(audio):
     except Exception as e:
         return f"❌ Erreur Deepgram : {e}"
 
-def transcribe_speech():
-    r = sr.Recognizer()
-    with sr.Microphone() as source:
-        st.info("🎙️ Enregistrement en cours… Parlez maintenant.")
-        r.adjust_for_ambient_noise(source, duration=1)
-        try:
-            audio = r.listen(source, timeout=duration)
-            if api_choice == "Google":
-                return r.recognize_google(audio, language=f"{lang_choice}-{lang_choice.upper()}")
-            if api_choice == "Sphinx":
-                return r.recognize_sphinx(audio, language=f"{lang_choice}-{lang_choice.upper()}")
-            if api_choice == "Deepgram":
-                return transcribe_with_deepgram(audio)
-        except sr.UnknownValueError:
-            return "❌ Impossible de comprendre l'audio."
-        except sr.RequestError as e:
-            return f"❌ Erreur API : {e}"
-        except Exception as e:
-            return f"❌ Erreur inattendue : {e}"
+def transcribe_wav_bytes(wav_bytes: bytes) -> str: 
+    recognizer = sr.Recognizer() 
+    audio_data = sr.AudioData(wav_bytes, sample_rate=44100, sample_width=2) 
+    try: 
+        if api_choice == "Google": 
+            return recognizer.recognize_google(audio_data, language=f"{lang_choice}-{lang_choice.upper()}") 
+        if api_choice == "Sphinx": 
+            return recognizer.recognize_sphinx(audio_data, language=f"{lang_choice}-{lang_choice.upper()}") 
+        if api_choice == "Deepgram": 
+            # On recrée un AudioFile temporaire pour Deepgram 
+            class DummyAudio: 
+                def get_wav_data(self, **kwargs): return wav_bytes 
+            return transcribe_with_deepgram(DummyAudio()) 
+    except sr.UnknownValueError: 
+        return "❌ Impossible de comprendre l'audio." 
+    except sr.RequestError as e: 
+        return f"❌ Erreur API : {e}" 
+    except Exception as e: 
+        return f"❌ Erreur inattendue : {e}"
 
 # — Callbacks
 def start_recording():
     st.session_state.is_paused = False
-    st.session_state.transcribed_text = transcribe_speech()
+    st.info("🎙️ Enregistrement client… Parlez et cliquez sur Stop.")
+    wav_bytes = audiorecorder("Démarrer l'enregistrement", "Arrêter")
+    if wav_bytes:
+        st.audio(wav_bytes, format="audio/wav")
+        st.session_state.transcribed_text = transcribe_wav_bytes(wav_bytes)
 
 def pause_recording():
     st.session_state.is_paused = True
