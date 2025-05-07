@@ -1,6 +1,8 @@
 # app.py
 import streamlit as st
 import speech_recognition as sr
+# Désactive la recherche de PyAudio (preuve d'absence de micro sur le serveur)
+sr.Recognizer.get_pyaudio = lambda self: None
 #from streamlit_webrtc import webrtc_streamer
 from streamlit_audiorecorder import audiorecorder
 import requests
