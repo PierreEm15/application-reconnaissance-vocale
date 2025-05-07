@@ -2,4 +2,4 @@ streamlit
 SpeechRecognition
 requests
 python-dotenv
-streamlit-webrtc
+streamlit-audiorecorder
