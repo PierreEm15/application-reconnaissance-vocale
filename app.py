@@ -4,7 +4,7 @@ import speech_recognition as sr
 # Désactive la recherche de PyAudio (preuve d'absence de micro sur le serveur)
 sr.Recognizer.get_pyaudio = lambda self: None
 #from streamlit_webrtc import webrtc_streamer
-from streamlit_audiorecorder import audiorecorder
+from st_audiorec import st_audiorec
 import requests
 import tempfile
 import os
@@ -89,11 +89,9 @@ def transcribe_wav_bytes(wav_bytes: bytes) -> str:
 
 # — Callbacks
 def start_recording():
-    st.session_state.is_paused = False
-    st.info("🎙️ Enregistrement client… Parlez et cliquez sur Stop.")
-    wav_bytes = audiorecorder("Démarrer l'enregistrement", "Arrêter")
+    wav_bytes = st_audiorec()
     if wav_bytes:
-        st.audio(wav_bytes, format="audio/wav")
+        st.audio(wav_bytes, format='audio/wav')
         st.session_state.transcribed_text = transcribe_wav_bytes(wav_bytes)
 
 def pause_recording():
