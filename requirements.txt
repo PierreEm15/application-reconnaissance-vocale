@@ -1,5 +1,7 @@
+
 streamlit
-SpeechRecognition
+speechrecognition
+pocketsphinx
 requests
-python-dotenv
-streamlit-mic-recorder==0.1.3
+st-audiorec
+
