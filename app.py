@@ -1,23 +1,23 @@
 # app.py
+import os
+import tempfile
+import requests
 import streamlit as st
 import speech_recognition as sr
-# Désactive la recherche de PyAudio (preuve d'absence de micro sur le serveur)
-sr.Recognizer.get_pyaudio = lambda self: None
-#from streamlit_webrtc import webrtc_streamer
 from st_audiorec import st_audiorec
-import requests
-import tempfile
-import os
 
-# — Votre clé Deepgram (remplacez par une clé valide)
-DEEPGRAM_API_KEY = "67fc6fe4cd313d0407dccee289ce7441fbcf5372"
+# — Récupération de la clé Deepgram depuis les variables d'environnement
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+if not DEEPGRAM_API_KEY:
+    st.error("🔑 Veuillez définir la variable d'environnement DEEPGRAM_API_KEY.")
+    st.stop()
 
 # — Configuration de la page
 st.set_page_config(page_title="Assistant Vocal", page_icon="🎤")
 
 # — États de session
-st.session_state.setdefault('transcribed_text', "")
-st.session_state.setdefault('is_paused', False)
+if 'transcribed_text' not in st.session_state:
+    st.session_state.transcribed_text = ""
 
 # — Titre
 st.title("🎤 Application de reconnaissance vocale améliorée")
@@ -38,17 +38,21 @@ api_choice = st.selectbox(
     ["Google", "Sphinx", "Deepgram"]
 )
 
-# — 3️⃣ Durée
+# — 3️⃣ Durée d'enregistrement
 duration = st.slider("3️⃣ Durée d'enregistrement (s)", 5, 30, 10, step=5)
 
-def save_temp_wav(audio):
+
+def save_temp_wav(wav_bytes: bytes) -> str:
+    """Enregistre les octets WAV dans un fichier temporaire"""
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    tmp.write(audio.get_wav_data())
+    tmp.write(wav_bytes)
     tmp.close()
     return tmp.name
 
-def transcribe_with_deepgram(audio):
-    wav_path = save_temp_wav(audio)
+
+def transcribe_with_deepgram(wav_bytes: bytes) -> str:
+    """Envoie l'audio à Deepgram pour transcription"""
+    wav_path = save_temp_wav(wav_bytes)
     try:
         with open(wav_path, "rb") as f:
             resp = requests.post(
@@ -62,56 +66,44 @@ def transcribe_with_deepgram(audio):
         os.remove(wav_path)
         resp.raise_for_status()
         return resp.json()["results"]["channels"][0]["alternatives"][0]["transcript"]
-    except requests.exceptions.HTTPError:
-        return f"❌ Deepgram HTTP {resp.status_code}: {resp.text}"
     except Exception as e:
-        return f"❌ Erreur Deepgram : {e}"
+        return f"❌ Deepgram erreur : {e}"
 
-def transcribe_wav_bytes(wav_bytes: bytes) -> str: 
-    recognizer = sr.Recognizer() 
-    audio_data = sr.AudioData(wav_bytes, sample_rate=44100, sample_width=2) 
-    try: 
-        if api_choice == "Google": 
-            return recognizer.recognize_google(audio_data, language=f"{lang_choice}-{lang_choice.upper()}") 
-        if api_choice == "Sphinx": 
-            return recognizer.recognize_sphinx(audio_data, language=f"{lang_choice}-{lang_choice.upper()}") 
-        if api_choice == "Deepgram": 
-            # On recrée un AudioFile temporaire pour Deepgram 
-            class DummyAudio: 
-                def get_wav_data(self, **kwargs): return wav_bytes 
-            return transcribe_with_deepgram(DummyAudio()) 
-    except sr.UnknownValueError: 
-        return "❌ Impossible de comprendre l'audio." 
-    except sr.RequestError as e: 
-        return f"❌ Erreur API : {e}" 
-    except Exception as e: 
+
+def transcribe_wav_bytes(wav_bytes: bytes) -> str:
+    """Transcrit les octets WAV avec l'API choisie"""
+    recognizer = sr.Recognizer()
+    audio_data = sr.AudioData(wav_bytes, sample_rate=44100, sample_width=2)
+    try:
+        if api_choice == "Google":
+            return recognizer.recognize_google(
+                audio_data, language=f"{lang_choice}-{lang_choice.upper()}"
+            )
+        elif api_choice == "Sphinx":
+            return recognizer.recognize_sphinx(
+                audio_data, language=f"{lang_choice}-{lang_choice.upper()}"
+            )
+        else:
+            return transcribe_with_deepgram(wav_bytes)
+    except sr.UnknownValueError:
+        return "❌ Impossible de comprendre l'audio."
+    except sr.RequestError as e:
+        return f"❌ Erreur API : {e}"
+    except Exception as e:
         return f"❌ Erreur inattendue : {e}"
 
-# — Callbacks
-def start_recording():
-    wav_bytes = st_audiorec()
-    if wav_bytes:
-        st.audio(wav_bytes, format='audio/wav')
-        st.session_state.transcribed_text = transcribe_wav_bytes(wav_bytes)
+# — Enregistrement audio
+st.info(f"Appuyez sur 'Enregistrer' et parlez pendant {duration} secondes...")
+wav_bytes = st_audiorec()
+if wav_bytes:
+    st.audio(wav_bytes, format='audio/wav')
+    st.session_state.transcribed_text = transcribe_wav_bytes(wav_bytes)
 
-def pause_recording():
-    st.session_state.is_paused = True
-
-def resume_recording():
-    if st.session_state.is_paused:
-        st.session_state.is_paused = False
-        st.session_state.transcribed_text = transcribe_speech()
-
-# — Boutons
-col1, col2, col3 = st.columns(3)
-col1.button("🎤 Démarrer", on_click=start_recording)
-col2.button("⏸️ Mettre en pause", on_click=pause_recording)
-col3.button("▶️ Reprendre", on_click=resume_recording)
-
-# — Affichage
+# — Affichage de la transcription
 st.subheader("📝 Transcription")
 st.text_area("Texte transcrit :", value=st.session_state.transcribed_text, height=150)
 
+# — Sauvegarde
 if st.button("💾 Enregistrer la transcription"):
     with open("transcription.txt", "w", encoding="utf-8") as f:
         f.write(st.session_state.transcribed_text)
@@ -122,5 +114,5 @@ st.info("""
 💡 Conseils :
 - Parlez clairement à 15–20 cm du micro  
 - Évitez le bruit de fond  
-- Attendez le message « Enregistrement en cours… » avant de parler  
+- Attendez la fin de l'enregistrement avant de parler  
 """)
